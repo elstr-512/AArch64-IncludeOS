@@ -207,7 +207,7 @@ final: prev: {
         prev.pkgsStatic.http-parser
         prev.pkgsStatic.openssl
         prev.pkgsStatic.rapidjson
-        prev.pkgsStatic.s2n-tls
+        # prev.pkgsStatic.s2n-tls # NOTE: s2n works. Removed to mirror the upstream Nix epression, for closure investigation.
         self.libfmt
         self.lest
       ] ++ archBuildInputs;
