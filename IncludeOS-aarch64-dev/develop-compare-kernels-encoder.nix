@@ -1,0 +1,187 @@
+{
+  # Path to build directory created by CMake.
+  buildpath ? "build-${arch}"
+
+  # Enable ccache support.
+, withCcache ? false
+
+  # Target platform
+, arch ? "aarch64"
+
+  # packages for the build platform
+, nixpkgs ? ../pinned.nix
+
+, pkgs ? import nixpkgs {}
+
+  # includeos derivation
+, includeos ? import ../default.nix {
+    target = "${arch}";
+    inherit withCcache;
+  }
+
+  # packages configured for the target architecture
+, crossPkgs ? includeos.pkgs
+
+  # use zsh instead of bash
+, useZsh ? false
+
+, linux-binary ? import ./services/compare-kernels-encoder/build-linux.nix {
+    # target = "x86_64";
+    target = "aarch64";
+  }
+}:
+
+pkgs.mkShell.override { inherit (includeos) stdenv; } rec {
+
+  # Build tools that run on the build platform, but are
+  # configured to target the *target-architecture* platform.
+  nativeBuildInputs = [
+    crossPkgs.buildPackages.cmake
+    crossPkgs.buildPackages.nasm
+  ];
+
+  # Tools configured to run on the build platform.
+  packages = [
+    pkgs.qemu
+    pkgs.dtc
+    pkgs.aarch64-esr-decoder
+  ];
+
+  # compiled for the *target* platform
+  buildInputs = [
+    includeos
+    includeos.pkgs.pkgsStatic.x264
+  ];
+
+  shellHook = ''
+    # Check recursive develop-shell
+    if [[ "$INSIDE_DEVELOP_SHELL" ]]; then
+      echo -e "Error: recursive develop-shell ... exiting"
+      exit 1
+    fi
+    export INSIDE_DEVELOP_SHELL=1
+
+    INCLUDEOS=${includeos}
+    USE_ZSH=${toString useZsh}
+
+    ROOT_SRC_DIR=${toString ../.}
+    AARCH64_ROOT_DIR=${toString ./.}
+    BUILDPATH=${buildpath}
+    ARCH=${arch}
+
+    # delete old just in case it's dirty
+    [[ -d $BUILDPATH ]] && {
+      rm -rf $BUILDPATH;
+    }
+
+    # build includeOS
+    cmake -S $ROOT_SRC_DIR -B $BUILDPATH \
+      -D CMAKE_EXPORT_COMPILE_COMMANDS=ON \
+      -D ARCH=$ARCH \
+      -D CMAKE_MODULE_PATH=$INCLUDEOS/cmake
+
+    # procuced by CMake
+    CCDB="$BUILDPATH/compile_commands.json"
+
+    # attempting to use -resource-dir with 'clang++ -print-resource-dir'
+    # doesn't work here as we're using -nostdlib/-nostdlibinc
+    IOS_LIB_LICXX_INCLUDE=${includeos.libraries.libcxx.include}
+    IOS_LIB_LIBC=${includeos.libraries.libc}
+
+    tmp="$CCDB.clangd.tmp"
+    jq \
+      --arg libcxx "$IOS_LIB_LICXX_INCLUDE" \
+      --arg libc "$IOS_LIB_LIBC" \
+      --arg localsrc "$ROOT_SRC_DIR" \
+      '
+      map(.command |= ( .
+          + " -isystem \($libcxx)"
+          + " -isystem \($libc)/include"
+          | gsub("(?<a>-I)(?<b>/lib/LiveUpdate/include)"; .a + $localsrc + .b)
+      ))
+    ' "$CCDB" > "$tmp" && mv "$tmp" "$CCDB"
+
+    # most clangd configurations and editors will look in ./build/, but this just makes it easier to find for some niche edge cases
+    cd $ROOT_SRC_DIR
+    ln -sfn "$AARCH64_ROOT_DIR/$BUILDPATH/compile_commands.json" "$ROOT_SRC_DIR/compile_commands.json"
+    cd $AARCH64_ROOT_DIR
+
+    # build service
+    EXAMPLE_SOURCE="./services/compare-kernels-encoder"
+
+    if [[ -d $EXAMPLE_SOURCE ]]; then
+      SERVICE_BUILDPATH="$BUILDPATH-service"
+
+      [[ -d $SERVICE_BUILDPATH ]] && {
+        echo "Removing dirty 'example build' directory...";
+        rm -rf $SERVICE_BUILDPATH;
+      }
+
+      # M_BUILD_TYPE="Debug"
+      M_BUILD_TYPE="Release"
+
+      [[ ! -d $SERVICE_BUILDPATH ]] && {
+        cmake -S $EXAMPLE_SOURCE -B $SERVICE_BUILDPATH -D ARCH=$ARCH -D CMAKE_BUILD_TYPE="$M_BUILD_TYPE" 2>&1
+        (cd $SERVICE_BUILDPATH && make -j 2 2>&1)
+
+        if [ $? -ne 0 ]; then # service build error
+          exit
+        fi
+      }
+    fi
+
+
+    # Create dir with services/tools for out-encodering (aarch64) includeos
+    [[ ! -d out-encoder ]] && {
+      mkdir -p out-encoder
+    }
+
+    SERVICE_RESULT="$SERVICE_BUILDPATH/includeos_x264_encoder.elf.bin"
+
+    if [[ -e $SERVICE_RESULT ]]; then
+      cp -f $SERVICE_RESULT out-encoder/
+
+      LINUX_BINARY=${linux-binary}
+      cp -f $LINUX_BINARY/bin/linux_x264_native.out out-encoder/
+      cp -f $LINUX_BINARY/bin/linux_VM out-encoder/
+
+      chmod 755 out-encoder/linux_x264_native.out
+      chmod 755 out-encoder/linux_VM
+
+      cd out-encoder/
+
+
+      ##### raspberrypi block #####
+      # if true; then
+      if false; then
+      cd ../
+
+      cp -f $SERVICE_RESULT out-raspberrypi/
+
+      LINUX_BINARY=${linux-binary}
+      cp -f $LINUX_BINARY/bin/linux_x264_native.out out-raspberrypi/
+      cp -f $LINUX_BINARY/bin/linux_VM out-raspberrypi/
+
+      chmod 755 out-raspberrypi/linux_x264_native.out
+      chmod 755 out-raspberrypi/linux_VM
+
+      cp -f out-raspberrypi/linux_VM out-raspberrypi/alpine-minirootfs-3.23.3-aarch64/
+      (cd out-raspberrypi/alpine-minirootfs-3.23.3-aarch64/ && find . -print0 | cpio --null -ov --format=newc | gzip > ../initramfs.cpio.gz)
+
+      echo 'scp copy...'
+
+      scp -i ~/.ssh/id_eepi -r out-raspberrypi/ eepi@10.42.0.133:
+
+      cd out-raspberrypi/
+      fi
+      ##### raspberrypi block #####
+
+    fi
+
+    # optional use zsh
+    if [[ $USE_ZSH ]]; then
+      exec zsh
+    fi
+  '';
+}
+
