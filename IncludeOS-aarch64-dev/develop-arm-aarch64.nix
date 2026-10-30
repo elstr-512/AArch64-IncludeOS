@@ -1,10 +1,5 @@
-# develop-arm.nix
-#
 # Sets up a development shell
 # builds example service
-# make boot/ dir for testing service
-#
-
 {
   # Path to build directory created by CMake.
   buildpath ? "build-${arch}"
@@ -121,8 +116,11 @@ pkgs.mkShell.override { inherit (includeos) stdenv; } rec {
         rm -rf $SERVICE_BUILDPATH;
       }
 
+      # M_BUILD_TYPE="Debug"
+      M_BUILD_TYPE="Release"
+
       [[ ! -d $SERVICE_BUILDPATH ]] && {
-        cmake -S $EXAMPLE_SOURCE -B $SERVICE_BUILDPATH -D ARCH=$ARCH -D CMAKE_BUILD_TYPE=Debug 2>&1
+        cmake -S $EXAMPLE_SOURCE -B $SERVICE_BUILDPATH -D ARCH=$ARCH -D CMAKE_BUILD_TYPE="$M_BUILD_TYPE" 2>&1
         (cd $SERVICE_BUILDPATH && make -j 2 2>&1)
 
         if [ $? -ne 0 ]; then # service build error
@@ -132,9 +130,9 @@ pkgs.mkShell.override { inherit (includeos) stdenv; } rec {
     fi
 
 
-    # Create dir with services/tools for booting (aarch64) includeos
-    [[ ! -d boot ]] && {
-      mkdir -p boot
+    # Create dir with services/tools for out-includeosing (aarch64) includeos
+    [[ ! -d out-includeos ]] && {
+      mkdir -p out-includeos
     }
 
     SERVICE_RESULT="$SERVICE_BUILDPATH/hello_includeos.elf.bin"
@@ -142,12 +140,12 @@ pkgs.mkShell.override { inherit (includeos) stdenv; } rec {
     U_BOOT=${u-boot}
 
     if [[ -e $SERVICE_RESULT ]]; then
-      cp -f $SERVICE_RESULT boot/
-      cp -f $U_BOOT/u-boot.bin boot/
+      cp -f $SERVICE_RESULT out-includeos/
+      cp -f $U_BOOT/u-boot.bin out-includeos/
 
       # insert correct project root for gdb
-      sed -i "/^PROJECT_ROOT    :=.*/c\PROJECT_ROOT    := $ROOT_SRC_DIR" boot/Makefile
-      cd boot
+      sed -i "/^PROJECT_ROOT    :=.*/c\PROJECT_ROOT    := $ROOT_SRC_DIR" out-includeos/Makefile
+      cd out-includeos
     fi
 
     # optional use zsh
