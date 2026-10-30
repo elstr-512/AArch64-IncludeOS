@@ -51,8 +51,6 @@ kernel:
 		-cpu $(CPU_FLAGS) \
 		-nographic \
 		-kernel $(TARGET) \
-		-d int,mmu -D qemu.log \
-		| tee kernel.log
 
 uboot:
 	@echo -e "[RUN] Launching QEMU (w. uboot as bios)\n"
@@ -103,7 +101,7 @@ gdb-attach:
 	gdb $(TARGET) -ex "target extended-remote :1234" -ex "break _start"
 
 NIX_BUILD_ROOT  := /build/source
-PROJECT_ROOT    := /home/ee/workspace/IncludeOS-dir/IncludeOS-elstr-512-clean
+PROJECT_ROOT    := /home/ee/workspace/IncludeOS-dir/tmp-stuff/AArch64-IncludeOS
 SUBSTITUTE_ROOT := set substitute-path $(NIX_BUILD_ROOT) $(PROJECT_ROOT)
 
 gef-attatch:
@@ -119,24 +117,7 @@ pi-kernel:
 	sudo qemu-system-aarch64 -enable-kvm \
 		-m 2G \
 		-machine virt,accel=kvm,gic-version=host -cpu host -nographic \
-		-kernel $(TARGET) \
-		-d int -D qemu.log \
-		| tee kernel.log
-
-pi-compare:
-	sudo qemu-system-aarch64 -enable-kvm \
-		-m 2G \
-		-machine virt,accel=kvm,gic-version=host -cpu host -nographic \
 		-kernel $(TARGET)
-
-	@echo ""
-	@echo "[QEMU] done!"
-	@echo "---- ---- ---- ---- ---- ---- ---- ----"
-	@echo ""
-	@./c63enc
-	@echo "[ENCODER] done!"
-	@echo "---- ---- ---- ---- ---- ---- ---- ----"
-
 
 pi-debug:
 	sudo qemu-system-aarch64 \
@@ -148,124 +129,13 @@ pi-debug:
 pi-gef-attatch:
 	gdb $(TARGET) -ex "$(SUBSTITUTE_ROOT)" -ex "gef-remote --qemu-user 10.42.0.133 1234" -ex "break _start"
 
-# ────────────────────────────────
-# piped in/out
-# .
-
-INPUT_FILE  := ../videos-yuv/foreman.yuv
-OUTPUT_FILE := output.out
-
-pipe-service:
-	@mkfifo vmvideo.in
-	@mkfifo vmvideo.out
-
-	@qemu-system-aarch64 \
-		-m 2G \
-		-cpu $(CPU_FLAGS) \
-		-machine $(MACHINE_FLAGS) \
-		-nographic \
-		-kernel $(TARGET) \
-		-serial mon:stdio \
-		-serial pipe:vmvideo
-
-	@rm vmvideo.in
-	@rm vmvideo.out
-
-
-INPUT_FILE_PI := /tmp/videos-yuv/tractor.yuv
-OUTPUT_FILE_PI := /tmp/videos-yuv/output.out
-
-pi-pipe-service:
-	@mkfifo vmvideo.in
-	@mkfifo vmvideo.out
-
-	sudo qemu-system-aarch64 -enable-kvm \
-		-m 3G \
-		-cpu host \
-		-machine virt,accel=kvm,gic-version=host \
-		-nographic \
-		-kernel $(TARGET) \
-		-serial mon:stdio \
-		-serial pipe:vmvideo
-
-	@rm vmvideo.in
-	@rm vmvideo.out
-
-pipe-in-out:
-	@cat vmvideo.out > $(OUTPUT_FILE_PI) &
-	@cat $(INPUT_FILE_PI) EOF > vmvideo.in &
-
-	@echo "[INPUT]  piping $(INPUT_FILE) to vm"
-	@echo "[OUTPUT] saved to $(OUTPUT_FILE)"
-
-	@ls -l $(INPUT_FILE_PI) $(OUTPUT_FILE_PI)
-
-pipe-mkfifo:
-	@mkfifo vmvideo.in
-	@mkfifo vmvideo.out
-
-pipe-clean-fifo:
-	@rm vmvideo.in
-	@rm vmvideo.out
-
-LOAD_FILE := ../videos-yuv/foreman.yuv
-# LOAD_FILE := ../videos-yuv/tractor.yuv
-
-# LOAD_FILE_PI := /tmp/videos-yuv/foreman.yuv
-LOAD_FILE_PI := /tmp/videos-yuv/tractor.yuv
-
-2_GB_POS  := 0x80000000
-
-# pmemsave 0x4070b8c0 300 output-x264
-
-load-service:
-	@qemu-system-aarch64 \
-		-m 3G \
-		-cpu $(CPU_FLAGS) \
-		-machine $(MACHINE_FLAGS) \
-		-kernel $(TARGET) \
-		-device loader,file=$(LOAD_FILE),addr=$(2_GB_POS) \
-		-nographic
-
-pi-load-service:
-	sudo qemu-system-aarch64 \
-		-enable-kvm \
-		-cpu host \
-		-m 4G \
-		-machine virt,accel=kvm,gic-version=host \
-		-kernel $(TARGET) \
-		-device loader,file=$(LOAD_FILE_PI),addr=$(2_GB_POS) \
-		-nographic
-
-pi-load-service-linux-vm:
-	sudo qemu-system-aarch64 \
-		-enable-kvm \
-		-cpu host \
-		-machine virt,accel=kvm,gic-version=host \
-		-m 4G \
-		-kernel Image \
-		-initrd initramfs.cpio.gz \
-		-append "console=ttyAMA0" \
-		-drive file=../video.img,if=virtio,format=raw \
-		-nographic
-
-linux_vm:
-	cp -f ../raspberrypi/linux_vm initramfs
-	(cd initramfs && find . -print0 | cpio --null -ov --format=newc | gzip > ../initramfs.cpio.gz)
-
-	qemu-system-aarch64 \
-		-machine virt \
-		-cpu $(CPU_FLAGS) \
-		-m 5G \
-		-kernel ../linux/arch/arm64/boot/Image \
-		-append "console=ttyAMA0 init=/linux_vm" \
-		-initrd initramfs.cpio.gz \
-		-device loader,file=../videos-yuv/tractor.yuv,addr=0x80000000 \
-		-nographic
 
 # ----------------
 # COMPARING
 # ----------------
+
+
+ENCODER-TARGET := includeos_x264_encoder.elf.bin
 
 # m_LOAD_FILE_PI := ../videos-yuv/foreman.yuv
 m_LOAD_FILE_PI := ../videos-yuv/tractor.yuv
@@ -287,7 +157,7 @@ run-all-compare:
 	make run-test-Linux-VM >> ../data-logs/$(DATE_TOD)Linux-VM
 
 run-test-Linux-nat:
-	taskset -c 1 ./hello_linux
+	taskset -c 1 ./linux_x264_native.out
 
 run-test-IOS:
 	sudo taskset -c 1 qemu-system-aarch64 \
@@ -296,7 +166,7 @@ run-test-IOS:
 		-m 4G \
 		-cpu host \
 		-machine virt,accel=kvm,gic-version=host \
-		-kernel $(TARGET) \
+		-kernel $(ENCODER-TARGET) \
 		-device loader,file=$(m_LOAD_FILE_PI),addr=$(m_2_GB_POS) \
 		-nographic
 
