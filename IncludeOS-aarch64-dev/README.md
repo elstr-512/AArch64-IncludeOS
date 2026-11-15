@@ -3,7 +3,7 @@
 The current target is: [QEMU Arm System emulator - ‘virt’ generic virtual
 platform](https://www.qemu.org/docs/master/system/arm/virt.html)
 
-## Build AArch64 Includeos example
+## Build AArch64 IncludeOS example
 
 The following command sets up a shell and builds the IncludeOS service located
 in `./services/example/`.
@@ -14,7 +14,7 @@ nix-shell develop-arm-aarch64.nix
 
 The build output is placed into `./out-includeos/`. And the shell is set up with
 the following tools and utilities:
-- QEMU. For lauching the IncludeOS service.
+- QEMU. For launching the IncludeOS service.
 - aarch64-esr-decoder. A utility for decoding the AArch64 Exception Syndrome Register.
 - u-boot. An optional boot loader.
 - A Makefile. Not for making, for repetitive commands.
