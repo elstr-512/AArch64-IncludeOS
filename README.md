@@ -28,10 +28,22 @@ target architecture:
 nix-build default.nix --argstr target aarch64
 ```
 
-## Implementation
+# Implementation and benchmark
+
+The main contribution for cross-compiling with Nix is located in the overlay:
+`./overlay.nix`.
+
+The contribution running IncludeOS on AArch64 is located in the following
+files:
+```
+./src/platform/aarch64_qemu_virt/aarch64_plat/asm-start.S
+./src/platform/aarch64_qemu_virt/aarch64_plat/asm-MMU.S
+./src/platform/aarch64_qemu_virt/aarch64_plat/exceptions/asm-exception_vector.S
+```
 
 The current target is: [QEMU Arm System emulator - ‘virt’ generic virtual
 platform](https://www.qemu.org/docs/master/system/arm/virt.html)
+
 
 Demonstrations for building and running AArch64 IncludeOS services,
 are located in:

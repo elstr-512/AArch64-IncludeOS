@@ -1,12 +1,12 @@
 # Video Encoding Benchmark
 
-The file `develop-compare-kernels-encoder.nix`, buildt the three
-benchmark configuration:
+The file `../develop-compare-kernels-encoder.nix`, builds the three
+benchmark configurations:
 - includeos_x264_encoder.elf.bin
 - linux_x264_native.out
 - linux_VM
 
-All three executables expects [the tractor video sequense](https://media.xiph.org/video/derf/)
+All three executables expects [the tractor video sequence](https://media.xiph.org/video/derf/)
 as a video file located at:
 ```
 ./videos-yuv/tractor.yuv
