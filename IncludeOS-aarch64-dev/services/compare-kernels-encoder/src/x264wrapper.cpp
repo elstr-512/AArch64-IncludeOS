@@ -165,7 +165,6 @@ int x264wrapper() {
     i_frame_size = x264_encoder_encode( h, &nal, &i_nal, &pic, &pic_out );
 
     ++numframes;
-    printf("frame %d\n", numframes);
 
     if( i_frame_size < 0 ) {
       exit(2);
